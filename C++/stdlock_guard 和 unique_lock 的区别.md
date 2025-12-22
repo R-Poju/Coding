@@ -55,7 +55,7 @@ std::unique_lock
 
 当只需简单自动加解锁，追求极致性能时，用 std::lock_guard
 
-当需要灵活控制锁（延迟锁定、手动解锁、条件变量、所有权转移）时，用 std::lock_guard
+当需要灵活控制锁（延迟锁定、手动解锁、条件变量、所有权转移）时，用 std::unique_lock
 
 
 
