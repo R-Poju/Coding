@@ -57,27 +57,27 @@ void ChatDialog::slot_apply_friend(std::shared_ptr<AddFriendApply> apply)
 ```C++
 void ApplyFriendPage::AddNewApply(std::shared_ptr<AddFriendApply> apply)
 {
-    //先模拟头像随机，以后头像资源增加资源服务器后再显示
-    int randomValue = QRandomGenerator::global()->bounded(100); // 生成0到99之间的随机整数
+	//先模拟头像随机，以后头像资源增加资源服务器后再显示
+    int randomValue = QRandomGenerator::global()->bounded(100);
     int head_i = randomValue % heads.size();
-	auto* apply_item = new ApplyFriendItem();
+    
+    //设置页面信息
+    auto* apply_item = new ApplyFriendItem();
     auto apply_info = std::make_shared<ApplyInfo>(apply->_from_uid,
-             apply->_name, apply->_desc,heads[head_i], apply->_name, 0, 0);
-    apply_item->SetInfo( apply_info);
-	QListWidgetItem* item = new QListWidgetItem;
-	//qDebug()<<"chat_user_wid sizeHint is " << chat_user_wid->sizeHint();
-	item->setSizeHint(apply_item->sizeHint());
-	item->setFlags(item->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelectable);
-	ui->apply_friend_list->insertItem(0,item);
-	ui->apply_friend_list->setItemWidget(item, apply_item);
-    apply_item->ShowAddBtn(true);
-	//收到审核好友信号
-    connect(apply_item, &ApplyFriendItem::sig_auth_friend, [this](std::shared_ptr<ApplyInfo> apply_info) {
-		auto* authFriend = new AuthenFriend(this);
-		authFriend->setModal(true);
-        authFriend->SetApplyInfo(apply_info);
-		authFriend->show();
-		});
+                                                 apply->_name,
+                                                 apply->_desc,
+                                                 heads[head_i],
+                                                 apply->_name,
+                                                 0, 0);
+    apply_item->SetInfo(apply_info);
+    
+    QListWidgetItem* item = new QListWidgetItem;
+    
+    item->setSizeHint(apply_item->sizeHint());
+    item->setFlags(item->flags() & ~Qt::ItemIsEnabled & ~Qt::ItemIsSelecteable);
+    ui->apply_friend_list->insertItem(0, item);
+    ui->apply_friend_list->setItemWidget(item, apply_item);
+    apply_item
 }
 ```
 
