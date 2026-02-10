@@ -8,6 +8,7 @@ std::shared_ptr<UserInfo> MysqlDao::GetUser(int uid)
 		return nullptr;
 	}
 
+    //延迟相应，函数调用结束自动归还连接
 	Defer defer([this, &con]() {
 		pool_->returnConnection(std::move(con));
 		});
@@ -151,6 +152,7 @@ bool MysqlDao::AddFriendApply(const int& from, const int& to)
         return false;
     }
     
+    //函数结束自动归还连接，释放资源
     Defer defer([this, &con](){
        pool_->returnConnection(std::move(con)); 
     });

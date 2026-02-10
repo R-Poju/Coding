@@ -8,6 +8,8 @@ std::queue<shared_ptr<LogicNode>> _msg_que;
 
 _msg_que是一个存放数据的消息队列
 
+
+
 ```C++
 void LogicSystem::DealMsg(){
     for( ; ; ){
@@ -157,7 +159,17 @@ void LogicSystem::AddFriendApply(std::shared_ptr<CSession> session,
 
 
 
-
+```C++
+void LogicSystem::LoginHandler(shared_ptr<CSession> session,
+                               const short& msg_id,
+                               const string& msg_data){
+    Json::Reader reader;
+    Json::Value root;
+    reader.parse(msg_data, root);
+    auto uid = root["uid"].asInt();
+    
+}
+```
 
 
 
