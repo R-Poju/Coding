@@ -1,5 +1,7 @@
 ApplyFriend
 
+认证界面AuthenFriend与添加好友界面ApplyFriend逻辑基本一致
+
 
 
 ```C++
