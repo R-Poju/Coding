@@ -118,7 +118,103 @@ Status ChatServiceImpl::NotifyAddFriend(ServerContext* context,
 
 
 
+```C++
+AuthFriendRsp ChatGrpcClient::NotifyAuthFriend(std::string server_ip,
+                                               const AuthFriendReq& req){
+    AuthFriendRsp rsp;
+    rsp.set_error(ErrorCodes::Success);
+    
+    Defer defer([&rsp, &req](){
+        rsp.set_fromuid(req.fromuid());
+        rsp.set_touid(req.touid());
+    });
+    
+    auto find_iter = _pools.find(server_ip);
+    if(find_iter == _pools.end()){
+        return rsp;
+    }
+    
+    auto& pool = find_iter->second;
+    ClientContext context;
+    auto stub = pool->getConnection();
+    Status status = stub->NotifyAuthFriend(&context, req, &rsp);
+    Defer defercon([&stub, this, &pool](){
+       pool->returnConnection(std::move(stub)); 
+    });
+    
+    if(!status.ok()){
+        rsp.set_error(ErrorCodes::RPCFailed);
+        return rsp;
+    }
+    
+    return rsp;
+}
+```
 
+
+
+
+
+服务端
+
+```C++
+Status ChatServiceImpl::NotifyAuthFriend(ServerContext* context,
+                                         const AuthFriendReq* request,
+                                         AuthFriendRsp* reply){
+    //查找用户是否在本服务器
+    auto touid = request->touid();
+    auto fromuid = request->fromuid();
+    auto session = UserMgr::GetInstance()->GetSession(touid);
+    
+    Defer defer([request, reply](){
+       reply->set_error(ErrorCodes::Success);
+       reply->set_fromuid(request->fromuid());
+       reply->set_touid(request->touid());
+    });
+    
+    //用户不在内存中则直接返回
+    if(session == nullptr){
+        return Status::OK;
+    }
+    
+    //在内存中则直接发送通知对方
+    Json::Value rtvalue;
+    rtvalue["error"] = ErrorCodes::Success;
+    rtvalue["fromuid"] = request->fromuid();
+    rtvalue["touid"] = request->touid();
+    
+    std::string base_key = USER_BASE_INFO + std::to_string(fromuid);
+    auto user_info = std::make_shared<UserInfo>();
+    bool b_info = GetBaseInfo(base_key, fromuid, user_info);
+    
+    if(b_info){
+        rtvalue["name"] = user_info->name;
+        rtvalue["nick"] = user_info->nick;
+        rtvalue["icon"] = user_info->icon;
+        rtvalue["sex"] = user_info->sex;
+    }
+    else{
+        rtvalue["error"] = ErrorCodes::UidInvalid;
+    }
+    
+    std::string return_str = rtvalue.toStyleString();
+    
+    session->Send(return_str, ID_NOTIFY_AUTH_FRIEND_REQ);
+    return Status::OK;
+}
+```
+
+A认证B为好友，A所在的服务器会给A回复一个ID_AUTH_FRIEND_RSP的消息，B所在的服务器会给B回复一个ID_NOTIFY_AUTH_FRIEND_REQ消息
+
+
+
+
+
+![进度](进度.png)
+
+在LogicSystem::AuthFriendApply()的最后，如果被添加的用户不在同一服务器，是直接向对方服务器发送请求，通知其添加好友吗？这个需要搞清楚
+
+明白了，客户端的NotifyAuthFriend会给参数中的目标服务器发送请求。用中文详细解释一下这个函数
 
 
 
