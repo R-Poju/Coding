@@ -117,7 +117,50 @@ void TcpMgr::handleMsg(ReqId id, int len, QByteArray data)
 
 
 
+客户端需要响应服务器发过来的`ID_AUTH_FRIEND_RSP`和`ID_NOTIFY_AUTH_FRIEND_REQ`消息
 
+在`initHandlers`中添加
+
+```C++
+_handlers.insert(ID_AUTH_FRIEND_RSP, [this](ReqId id, int len){
+    Q_UNUSED(len);
+    qDebug() << "handle id is " << id << " data is " << data;
+    
+    //将QByteArray转换为QJsonDocument
+    QJsonDocument jsonDoc = QJsonDocument::fromJson(data);
+    
+    //检查转换是否成功
+    if(jsonDoc.isNull()){
+        qDebug() << "Failed to create QJsonDocument.";
+        return;
+    };
+    
+    QJsonDocument jsonObj = jsonDoc.object();
+    
+    if(!jsonObj.contasins("error")){
+        int err = ErrorCodes::ERR_JSON;
+        qDebug() << "Auth Friend Failed, err is Json Parse Err" << err;
+        return;
+    }
+    
+    int err = jsonObj["error"].toInt();
+    if(err != ErrorCodes::SUCCESS){
+        qDebug() << "Auth Friend Failed, err is " << err;
+        return;
+    }
+    
+    auto name = jsonObj["name"].toString();
+    auto nick = jsonObj["nick"].toString();
+    auto icon = jsonObj["icon"].toString();
+    auto sex = jsonObj["sex"].toInt();
+    auto uid = jsonObj["uid"].toInt();
+    
+    auto rsp = std::make_shared<AuthRsp>(uid, name, nick, icon, sex);
+    emit sig_auth_rsp(rsp);
+    
+    qDebug() << "Auth Friend Success ";
+});
+```
 
 
 
