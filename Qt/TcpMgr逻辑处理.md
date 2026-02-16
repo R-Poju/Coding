@@ -168,7 +168,44 @@ _handlers.insert(ID_AUTH_FRIEND_RSP, [this](ReqId id, int len){
 
 
 
+```c++
+_handlers.insert(ID_NOTIFY_AUTH_FRIEND_REQ, [this](ReqId id, int len, QByteArray data) {
+    Q_UNUSED(len);
+    qDebug() << "handle id is " << id << " data is " << data;
+    // 将QByteArray转换为QJsonDocument
+    QJsonDocument jsonDoc = QJsonDocument::fromJson(data);
 
+    // 检查转换是否成功
+    if (jsonDoc.isNull()) {
+        qDebug() << "Failed to create QJsonDocument.";
+        return;
+    }
+
+    QJsonObject jsonObj = jsonDoc.object();
+    if (!jsonObj.contains("error")) {
+        int err = ErrorCodes::ERR_JSON;
+        qDebug() << "Auth Friend Failed, err is " << err;
+        return;
+    }
+
+    int err = jsonObj["error"].toInt();
+    if (err != ErrorCodes::SUCCESS) {
+        qDebug() << "Auth Friend Failed, err is " << err;
+        return;
+    }
+
+    int from_uid = jsonObj["fromuid"].toInt();
+    QString name = jsonObj["name"].toString();
+    QString nick = jsonObj["nick"].toString();
+    QString icon = jsonObj["icon"].toString();
+    int sex = jsonObj["sex"].toInt();
+
+    auto auth_info = std::make_shared<AuthInfo>(from_uid,name,
+                                                nick, icon, sex);
+
+    emit sig_add_auth_friend(auth_info);
+    });
+```
 
 
 
