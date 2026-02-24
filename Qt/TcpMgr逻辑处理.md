@@ -180,7 +180,7 @@ _handlers.insert(ID_NOTIFY_AUTH_FRIEND_REQ, [this](ReqId id, int len, QByteArray
         qDebug() << "Failed to create QJsonDocument.";
         return;
     }
-
+	
     QJsonObject jsonObj = jsonDoc.object();
     if (!jsonObj.contains("error")) {
         int err = ErrorCodes::ERR_JSON;
