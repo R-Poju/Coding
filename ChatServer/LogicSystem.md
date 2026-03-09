@@ -159,18 +159,6 @@ void LogicSystem::AddFriendApply(std::shared_ptr<CSession> session,
 
 
 
-```C++
-void LogicSystem::LoginHandler(shared_ptr<CSession> session,
-                               const short& msg_id,
-                               const string& msg_data){
-    Json::Reader reader;
-    Json::Value root;
-    reader.parse(msg_data, root);
-    auto uid = root["uid"].asInt();
-    
-}
-```
-
 
 
 
@@ -225,9 +213,120 @@ void LogicSystem::AuthFriendApply(std::shared_ptr<CSession> session,
 
 
 
+因为添加好友后，如果客户端重新登录，服务器LoginHandler需要加载好友列表，所以服务器要返回好友列表
 
-
-
+```C++
+void LogicSystem::LogicHandler(shared_ptr<CSession> session,
+                               const short& msg_id,
+                               const string& msg_data){
+    Json::Reader reader;
+    Json::Value root;
+    reader.parse(msg_data, root);
+    auto uid = root["uid"].asInt();
+    auto token = root["token"].asString();
+    std::cout << "user login uid is " << uid
+        << " user token is " << token << endl;
+    
+    Json::Value rtvalue;
+    Defer defer([this, &rtvalue, session](){
+        std::string return_str = rtvalue.toStyledString();
+        session->Send(return_str, MSG_CHAT_LOGIN_RSP);
+    });
+    
+    //从redis获取用户token是否正确
+    std::string uid_str = std::to_string(uid);
+    std::string token_key = USERTOKENPREFIX + uid_str;
+    std::string token_value = "";
+    bool success = RedisMgr::GetInstance()->Get(token_key, token_value);
+    if(!success){
+        rtvalue["error"] = ErrorCodes::UidInvalid;
+        return;
+    }
+    
+    if(token_value != token){
+        rtvalue["error"] = ErrorCodes::TokenInvalid;
+        return;
+    }
+    
+    //token验证成功
+    rtvalue["error"] = ErrorCodes::Success;
+    
+    //获取用户信息
+    std::string base_key = USER_BASE_INFO + uid_str;
+    auto user_info = std::make_shared<UserInfo>();
+    bool b_base = GetBaseInfo(base_key, uid, user_info);
+    if(!b_base){
+        rtvalue["error"] = ErrorCodes::UidInvalid;
+        return;
+    }
+    rtvalue["uid"] = uid;
+    rtvalue["pwd"] = user_info->pwd;
+    rtvalue["name"] = user_info->name;
+	rtvalue["email"] = user_info->email;
+	rtvalue["nick"] = user_info->nick;
+	rtvalue["desc"] = user_info->desc;
+	rtvalue["sex"] = user_info->sex;
+	rtvalue["icon"] = user_info->icon;
+    
+    //当用户登录后，服务器需要将申请列表和好友列表同步给客户端
+    
+    //从数据库获取申请列表
+    std::vector<std::shared_ptr<ApplyInfo>> apply_list;
+    auto b_apply = GetFriendApplyInfo(uid, apply_list);
+    if(b_apply){
+        for(auto& apply : apply_list){
+            Json::Value obj;
+            obj["name"] = apply->_name;
+			obj["uid"] = apply->_uid;
+			obj["icon"] = apply->_icon;
+			obj["nick"] = apply->_nick;
+			obj["sex"] = apply->_sex;
+			obj["desc"] = apply->_desc;
+			obj["status"] = apply->_status;
+            rtvalue["apply_list"].append(obj);
+        }
+    }
+    
+    //获取好友列表
+    std::vector<std::shared_ptr<UserInfo>> friend_list;
+    bool b_friend_list = GetFriendList(uid, friend_list);
+    for(auto& friend_ele : friend_list){
+        Json::Value obj;
+		obj["name"] = friend_ele->name;
+		obj["uid"] = friend_ele->uid;
+		obj["icon"] = friend_ele->icon;
+		obj["nick"] = friend_ele->nick;
+		obj["sex"] = friend_ele->sex;
+		obj["desc"] = friend_ele->desc;
+		obj["back"] = friend_ele->back;
+        rtvalue["friend_list"].append(obj);
+    }
+    
+    //获取当前服务器名称
+    auto server_name = ConfigMgr::Inst().GetValue("SelfServer", "Name");
+    //从redis中读取当前服务器的历史登录记录
+    auto rd_res = RedisMgr::GetInstance()->HGet(LOGIN_COUNT, server_name);
+    //解析计数值并递增
+    int count = 0;
+    if(!rd_res.empty()){
+        count = std::stoi(rd_res);
+    }
+    
+    count++;
+    //更新redis中的登录计数
+    auto count_str = std::to_string(count);
+    RedisMgr::GetInstance()->HSet(LOGIN_COUNT, server_name, count_str);
+    //session绑定用户uid
+    session->SetUserId(uid);
+    //为用户设置登录ip server的名字，记录用户登录的服务器位置
+    std::string ipkey = USERIPPREFIX + uid_str;
+    Redis::GetInstance()->Set(ipkey, server_name);
+    //uid和session绑定管理，方便以后踢人操作，通过uid找到session并强制断开连接
+    UserMgr::GetInstance()->SetUserSession(uid, session);
+    
+    return;
+}
+```
 
 
 
