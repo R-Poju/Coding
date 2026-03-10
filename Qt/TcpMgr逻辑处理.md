@@ -277,6 +277,113 @@ void TcpMgr::initHandlers()
 
 
 
+客户端发送聊天消息，在输入框输入消息后，点击发送会执行槽函数`void ChatPage::on_send_btn_clicked()`
+
+Tcp响应发送信号
+
+```C++
+void TcpMgr::slot_send_data(ReqId reqId, QByteArray dataBytes)
+{
+    uint16_t id = reqId;
+    
+    //计算长度，使用网络字节序转换
+    quint16 len = static_cast<quint16>(dataBytes.length());
+    
+    //创建一个QByteArray用于存储要发送的所有数据
+    QByteArray block;
+    QDataStream out(&block, QIODevice::WriteOnly);
+    
+    //设置数据流使用网络字节序
+    out.setByteOrder(QDataStream::BigEndian);
+    
+    //写入ID和长度
+    out << id << len;
+    
+    //添加字符串数据
+    block.append(dataBytes);
+    
+    //发送数据
+    _socket.write(block);
+    qDebug() << "tcp mgr send byte data is " << block;
+}
+```
+
+
+
+
+
+客户端响应服务器返回的消息，包括两种：
+
+1.A给B发送文本消息，A所在的服务器会给A发送ID_TEXT_CHAT_MSG_RSP消息
+
+2.B所在的服务器会通知B，告诉B有来自A的消息，通知消息为ID_NOTIFY_TEXT_CHAT_MSG_REQ
+
+所以在tcpmgr的initHandlers中添加响应ID_TEXT_CHAT_MSG_RSP消息
+
+```c++
+_handlers.insert(ID_TEXT_CHAT_MSG_RSP, [this](ReqId id, int len, QByteArray data){
+    Q_UNUSED(len);
+    qDebug() << "handle id is " << id << " data is " << data;
+    //将QByteArray转换为QJsonDocument
+    QJsonDocument jsonDoc = QJsonDocument::fromJson(data);
+    
+    //检查转换是否成功
+    if(jsonDoc.isNull()){
+        qDebug() << "Failed to create QJsonDocument.";
+        return;
+    }
+    
+    QJsonObject jsonObj = jsonDoc.object();
+    
+    if(!jsonObj.contains("error")){
+        int err = ErrorCodes::ERR_JSON;
+        qDebug() << "Chat Msg Rsp Failed, err is Json Parse Err" << err;
+        return;
+    }
+    
+    int err = jsonObj["error"].toInt();
+    if(err != ErrorCodes::SUCCESS){
+        qDebug() << "Chat Msg Rsp Failed, err is " << err;
+        return;
+    }
+    
+    qDebug() << "Receive Text Chat Rsp Success ";
+    //ui设置送达等标记 todo...
+});
+```
+
+
+
+
+
+
+
+
+
+
+
+```C++
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
