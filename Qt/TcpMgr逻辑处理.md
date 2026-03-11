@@ -358,12 +358,41 @@ _handlers.insert(ID_TEXT_CHAT_MSG_RSP, [this](ReqId id, int len, QByteArray data
 
 
 
-
-
-
+在TcpMgr的initHandlers中添加ID_NOTIFY_TEXT_CHAT_MSG_REQ
 
 ```C++
-
+_handlers.insert(ID_NOTIFY_TEXT_CHAT_REQ, [this](ReqId id, int len, QByteArray data){
+    Q_UNUSED(len);
+    qDebug() << "handle id is " << id << " data is " << data;
+    //将QByteArray转换为QJsonDocument
+    QJsonDocument jsonDOc = QJsonDocument::fromJson(data);
+    
+    //检查转换是否成功
+    if(jsonDoc.isNull()){
+        qDebug() << "Failed to create QJsonDocument.";
+        return;
+    }
+    
+    QJsonObject jsonObj = jsonDoc.object();
+    
+    if(!jsonObj.contains("error")){
+        int err = ErrorCodes::ERR_JSON;
+        qDebug() << "Notify Chat Msg Failed, err is Json Parse Err" << err;
+        return;
+    }
+    
+    int err = jsonObj["error"].toInt();
+    if(err != ErrorCodes::SUCCESS){
+        qDebug() << "Notify Chat Msg Failed, err is " << err;
+        return;
+    }
+    
+    qDebug() << "Receive Text Chat Notify Success ";
+    auto msg_ptr = std::make_shared<TextChatMsg>(jsonObj["fromuid"].toInt(),
+                                                 jsonObj["touid"].toInt(),
+                                                 jsonObj["text_array"].toArray());
+    emit sig_text_chat_msg(msg_ptr);
+});
 ```
 
 

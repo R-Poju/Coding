@@ -179,17 +179,187 @@ void ChatDialog::slot_auth_rsp(std::shared_ptr<AuthRsp> auth_rsp)
 ```C++
 void ChatPage::on_send_btn_clicked()
 {
+    //检查当前聊天对象是否有效
     if(_user_info == nullptr){
         qDebug() << "friend_info is empty";
         return;
     }
     
+    //获取当前用户信息
     auto user_info = UserMgr::GetInstance()->GetUserInfo();
     auto pTextEdit = ui->chatEdit;
-    ChatRole role = ChatRole::Self;
+    ChatRole role = ChatRole::Self;	//标记消息来源为自己
+    QString userName = user_info->_name;
+    QString userIcon = user_info->_icon;
     
+    //初始化消息容器
+    const QVector<MsgInfo>& msgList = pTextEdit->getMsgList();
+    QJsonObject textObj;
+    QJsonArray textArray;
+    int txt_size = 0;
+    
+    //遍历处理每条消息
+    for(int i = 0; i < msgList.size(); ++i)
+    {
+        //消息内容长度不合理就跳过
+        if(msgList[i].content.length() > 1024){
+            continue;
+        }
+        
+        QString type = msgList[i].msgFlag;	//消息类型：text/image/file
+        ChatItemBase* pChatItem = new ChatItemBase(role);	//创建消息项
+        pChatItem->setUserName(userName);
+        pChatItem->setUserIcon(QPixmap(userIcon));
+        QWidget* pBubble = nullptr;		//消息气泡部件
+        
+        //处理文本消息
+        if(type == "text")
+        {
+            //生成唯一id
+            QUuid uuid = QUuid::createUuid();
+            //转为字符串
+            QString uuidString = uuid.toString();
+            //创建文本气泡
+            pBubble = new TextBubble(role, msgList[i].content);
+            //检查累计长度是否超限
+            if(txt_size + msgList[i].content.length() > 1024){
+                //组装并发送当前批次消息
+                textObj["fromuid"] = user_info->_uid;
+                textObj["touid"] = _user_info->_uid;
+                textObj["text_array"] = textArray;
+                QJsonDocument doc(textObj);
+                QByteArray jsonData = doc.toJson(QJsonDocument::Compact);
+                //发送并清空之前累计的文本列表
+                txt_size = 0;
+                textArray = QJsonArray();
+                textObj = QJsonObject();
+                //发送tcp请求给chat server
+                emit TcpMgr::GetInstance()
+                    ->sig_send_data(ReqId::ID_TEXT_CHAT_MSG_REQ, jsonData);
+            }
+            
+            //将bubble和uid绑定，以后可以等网络返回消息后设置是否送达
+            //_bubble_map[uuidString] = pBubble;
+            txt_size += msgList[i].content.length();
+            QJsonObject obj;
+            QByteArray utf8Message = msgList[i].content.toUtf8();
+            obj["content"] = QString::fromUtf8(utf8Message);
+            obj["msgid"] = uuidString;
+            textArray.append(obj);
+            
+            //创建消息数据对象并通知显示
+            auto txt_msg = std::make_shared<TextChatData>(uuidString,
+                                                          obj["content"].toString(),
+                                                          user_info->_uid,
+                                                          _user_info->_uid);
+            emit sig_append_send_chat_msg(txt_msg);
+        }
+        else if(type == "image")
+        {
+            pBubble = new PictureBubble(QPixmap(msgList[i].content), role);
+        }
+        else if(type == "file")
+        {
+            
+        }
+        
+        //发送消息
+        if(pBubble != nullptr)
+        {
+            pChatItem->setWidget(pBubble);	//绑定气泡到消息项
+            ui->chat_data_list->appendChatItem(pChatItem);	//添加到聊天窗口
+        }
+    }
+    
+    qDebug() << "textArray is " << textArray;
+    //循环结束后发送最后一批消息
+    textObj["text_array"] = textArray;
+    textObj["fromuid"] = user_info->_uid;
+    textObj["touid"] = _user_info->_uid;
+    QJsonDocument doc(textObj);
+    QByteArray jsonData = doc.toJson(QJsonDocument::Compact);
+    //发送并清空之前累计的文本列表
+    txt_size = 0;
+    textArray = QJsonArray();
+    textObj = QJsonObject();
+    //发送tcp请求给chat server
+    emit TcpMgr::GetInstance()
+        ->sig_send_data(ReqId::ID_TEXT_CHAT_MSG_REQ, jsonData);
 }
 ```
+
+
+
+
+
+客户端ChatDialog添加对sig_text_chat_msg的响应
+
+```C++
+void ChatDialog::slot_text_chat_msg(std::shared_ptr<TextChatMsg> msg)
+{
+    auto find_iter = _chat_items_added.find(msg->_from_uid);
+    
+    //发送者已在消息列表中
+    if(find_iter != _chat_items_added.end()){
+        qDebug() << "set chat item msg, uid is " << msg->_from_uid;
+        QWidget* widget = ui->chat_user_list->itemWidget(find_iter.value());
+        auto chat_wid = qobject_cast<ChatUserWid*>(widget);
+        if(!chat_wid){
+            return;
+        }
+        chat_wid->updateLastMsg(msg->_chat_msgs);
+        //更新当前聊天页面记录
+        UpdateChatMsg(msg->_chat_msgs);
+        UserMgr::GetInstance()->AppendFriendChatMsg(msg->_from_uid, msg->_chat_msgs);
+        return;
+    }
+    
+    //如果没找到，则创建新的listwidget
+    auto* chat_user_wid = new ChatUserWid();
+    //查询好友信息
+    auto fi_ptr = UserMgr::GetInstance()->GetFriendById(msg->_from_uid);
+    chat_user_wid->SetInfo(fi_ptr);
+    QListWidgetItem* item = new QListWidgetItem;
+    item->setSizeHint(chat_user_wid->sizeHint());
+    chat_user_wid->updateLastMsg(msg->_chat_msgs);
+    UserMgr::GetInstance()->AppendFriendChatMsg(msg->_from_uid, msg->_chat_msgs);
+    ui->chat_user_list->insertItem(0, item);
+    ui->chat_user_list->setItemWidget(item, chat_user_wid);
+    _chat_items_added.insert(msg->_from_uid, item);
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
